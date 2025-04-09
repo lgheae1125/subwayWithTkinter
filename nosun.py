@@ -28,7 +28,6 @@ map.create_image(480, 170, image=map_img)
 #--------- header start ---------
 
 course = []
-marker_img = tk.PhotoImage(file="start_marker.png")
 
 def route_repeat(course):
     # 경로 초기화 코드
