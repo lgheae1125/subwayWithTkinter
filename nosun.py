@@ -1,49 +1,202 @@
 import tkinter as tk
 from PIL import ImageTk, Image
+from places import *
 from routing import *
 from start_station import *
+from stations_coordinate import *
 from tkinter import messagebox
 
-#--------- header start ---------
-
-def route_repeat(course):
-    # course는 사용자가 선택한 경로의 시작역과 모든 역의 정보가 담겨있음
-    totalRoute = []
-    totalShortestDist = 0
-    for i in len(course):
-        totalRoute.insert(shotestRoute(course[i], course[i + 1])[0])
-        totalShortestDist += (shotestRoute(course[i], course[i + 1])[1])
-
-start = None
-end = None
-
-def handle_search():
-    global start, end
-
-    input_text = search_entry.get().strip()
-
-    if input_text == placeholder_text:
-        messagebox.showwarning("입력 오류","검색할 역 이름을 입력하세요.")
-        return
-
-    if input_text not in stations:
-        messagebox.showerror("역 없음", f"'{input_text}' 는(은) 존재하지 않는 역입니다.")
-        return
-
-    if start is None:
-        start = input_text
-        print(f"[출발역 설정] {start}")
-        messagebox.showinfo("출발역 설정", f"출발역이 {start}로 설정되었습니다.")
-        search_entry.delete(0, tk.END)
-        search_entry.insert(0, placeholder_text)
-
 root = tk.Tk()
-root.geometry("1400x800")
+root.geometry("1386x800")
+root.resizable(False, False)
 
 header_frame = tk.Frame(root, height=60, background="#ffffff")
 map_frame = tk.Frame(root, width=960, height=340, background="#ffffff")
 list_frame = tk.Frame(root, width=960, height=340, background="#ffffff")
-side_frame = tk.Frame(root, width=380, height=700, background="#ffffff")
+side_frame = tk.Frame(root, width=366, height=700, background="#ffffff")
+
+#--------- map start ---------
+
+map_img_path = "map.png"
+map = tk.Canvas(map_frame, width=960, height=340)
+map.pack()
+map_img = ImageTk.PhotoImage(Image.open(map_img_path).resize((960, 340)))
+map.create_image(480, 170, image=map_img)
+
+#--------- map end ---------
+
+#--------- header start ---------
+
+course = []
+marker_img = tk.PhotoImage(file="start_marker.png")
+
+def route_repeat(course):
+    # 경로 초기화 코드
+    global map_img_path
+    map.delete("all")
+    map_img = ImageTk.PhotoImage(Image.open(map_img_path).resize((960, 340)))
+    map.create_image(480, 170, image=map_img)
+    # 경로 초기화 코드
+    course_color_idx = 0
+    station_color_idx = 0
+    course_color = ["red","yellow","green","blue"]
+    station_color = ["lightcoral","cornsilk","greenyellow","dodgerblue"]
+    
+    totalRoute = []
+    totalShortestDist = 0
+    
+    for i in range(len(course) - 1):
+        route = list(shotestRoute(course[i], course[i + 1])[0])
+        totalRoute += route
+        totalShortestDist += (shotestRoute(course[i], course[i + 1])[1])
+
+
+        for station in route:
+            map.create_oval(stations_coordinate[station][0]-6,stations_coordinate[station][1]-6,stations_coordinate[station][0]+3,stations_coordinate[station][1]+3,fill=station_color[station_color_idx % 4])
+        
+        station_color_idx += 1
+
+    for i in range(len(course)):
+        map.create_oval(stations_coordinate[course[i]][0]-8,stations_coordinate[course[i]][1]-8,stations_coordinate[course[i]][0]+5,stations_coordinate[course[i]][1]+5,fill=course_color[course_color_idx % 4])
+        course_color_idx += 1
+
+    print("totalRoute: ", totalRoute)
+    print("totalShortestDist: ", totalShortestDist)
+    
+
+start = None
+
+def handle_search():
+    global start, placeholder_text, course
+    course = []
+
+    input_text = search_entry.get().strip()
+
+    if input_text == placeholder_text:
+        messagebox.showwarning("입력 오류", "")
+        return
+
+    if input_text not in stations:
+        messagebox.showerror("역 없음", f"'{input_text}' 는(은) 존재하지 않는 역입니다.")
+        # 경로 초기화 코드
+        global map_img_path
+        map.delete("all")
+        map_img = ImageTk.PhotoImage(Image.open(map_img_path).resize((960, 340)))
+        map.create_image(480, 170, image=map_img)
+        # 경로 초기화 코드
+        return
+    
+    if start is not input_text:
+        start = input_text
+        course.insert(0, start)
+
+    
+    if start in course[1:]:
+        course.remove(start)
+
+    print(f"[출발역 설정] {start}")
+    messagebox.showinfo("출발역 설정", f"출발역이 {start}로 설정되었습니다.")
+    search_entry.delete(0, tk.END)
+    search_entry.config(fg="black")
+    route_repeat(course)
+        
+autocomplete_listbox = None
+autocomplete_matches = []
+autocomplete_index = -1
+
+# 초성 포함 검색 기능
+def cho_hangul_match(query, target):
+    # 초성 매칭 간단한 버전 (full 정교한 건 라이브러리 필요)
+    return query in target
+
+def show_autocomplete(event):
+    global autocomplete_listbox, autocomplete_matches, autocomplete_index
+    
+    # 방향키 이동/엔터 입력 시 자동완성 다시 뜨는 것 방지
+    if event.keysym in ["Up", "Down", "Return"]:
+        return
+
+    typed = search_entry.get().strip()
+    autocomplete_index = -1
+
+    if autocomplete_listbox:
+        autocomplete_listbox.destroy()
+
+    if typed == "" or typed == placeholder_text:
+        return
+
+    # 포함/초성/시작 검색
+    autocomplete_matches = [s for s in stations if typed in s]
+
+    if autocomplete_matches:
+        autocomplete_listbox = tk.Listbox(root, height=min(6, len(autocomplete_matches)), font=("Arial", 11),bg="#ffffff", relief="solid", bd=1)
+
+        # Entry 바로 아래 좌표 계산
+        x = search_entry.winfo_rootx() - root.winfo_rootx()
+        y = search_entry.winfo_rooty() - root.winfo_rooty() + search_entry.winfo_height()
+        w = search_entry.winfo_width()
+
+        autocomplete_listbox.place(x=x, y=y, width=w)
+
+        for match in autocomplete_matches:
+            autocomplete_listbox.insert("end", match)
+
+        autocomplete_listbox.bind("<ButtonRelease-1>", select_autocomplete_from_click)
+
+def select_autocomplete_from_listbox():
+    global autocomplete_listbox, autocomplete_matches
+
+    if autocomplete_listbox and autocomplete_listbox.curselection():
+        index = autocomplete_listbox.curselection()[0]
+        selected = autocomplete_matches[index]
+        update_search_entry(selected)
+
+def update_search_entry(selected_text):
+    global autocomplete_listbox
+    search_entry.delete(0, tk.END)
+    search_entry.insert(0, selected_text)
+    search_entry.config(fg="black")
+    search_entry.focus_set()
+    if autocomplete_listbox:
+        autocomplete_listbox.destroy()
+        autocomplete_listbox = None
+
+def handle_keypress(event):
+    global autocomplete_index
+
+    if not autocomplete_listbox:
+        return
+
+    autocomplete_listbox.focus_set()
+    
+    if event.keysym == "Down":
+        autocomplete_index += 1
+        if autocomplete_index >= autocomplete_listbox.size():
+            autocomplete_index = 0
+        autocomplete_listbox.select_clear(0, "end")
+        autocomplete_listbox.select_set(autocomplete_index)
+        autocomplete_listbox.activate(autocomplete_index)
+
+    elif event.keysym == "Up":
+        autocomplete_index -= 1
+        if autocomplete_index < 0:
+            autocomplete_index = autocomplete_listbox.size() - 1
+        autocomplete_listbox.select_clear(0, "end")
+        autocomplete_listbox.select_set(autocomplete_index)
+        autocomplete_listbox.activate(autocomplete_index)
+
+    elif event.keysym == "Return":
+        if autocomplete_index != -1 and autocomplete_matches:
+            selected = autocomplete_matches[autocomplete_index]
+            update_search_entry(selected)
+
+def select_autocomplete_from_click(event):
+    global autocomplete_listbox
+    if autocomplete_listbox:
+        index = autocomplete_listbox.curselection()
+        if index:
+            selected = autocomplete_listbox.get(index)
+            update_search_entry(selected)
 
 img_path = "button.png" 
 start_img = ImageTk.PhotoImage(Image.open(img_path).resize((60, 30)))
@@ -79,6 +232,10 @@ def set_placeholder(event):
 
 search_entry.bind("<FocusIn>", clear_placeholder)
 search_entry.bind("<FocusOut>", set_placeholder)
+search_entry.bind("<KeyRelease>", show_autocomplete)
+search_entry.bind("<Down>", handle_keypress)
+search_entry.bind("<Up>", handle_keypress)
+search_entry.bind("<Return>", handle_keypress)
 
 search_icon = tk.Button(search_frame, text="🔍", font=("Arial", 12), bg="#f2e6f7", bd=0, relief="flat", activebackground="#e0d5f0", cursor="hand2",command=handle_search)
 search_icon.pack(side="left", padx=(5, 10))
@@ -88,18 +245,9 @@ brand_label.pack(side="right", padx=20)
 
 #--------- header end ---------
 
-#--------- map&sid start ---------
+#--------- side start ---------
 
-img_path = r"C:\python\map.png"
-gif_path = r"C:\python\kakao2.gif"
-print("이미지 파일 경로:", img_path)
-
-
-try:
-    map_img = ImageTk.PhotoImage(Image.open(img_path).resize((960, 340), Image.LANCZOS))
-    tk.Label(map_frame, image=map_img, bg="#ffffff").place(x=0, y=0)
-except Exception:
-    pass
+gif_path = "kakao2.gif"
 
 try:
     gif = Image.open(gif_path)
@@ -120,84 +268,9 @@ try:
 except Exception as e:
     print("GIF 로드 오류:", e)
 
-#--------- map&sid end ---------
+#--------- side end ---------
 
 #--------- list start ---------
-
-places = [
-    {'디큐브시티': {'station': '신도림', 'time': '10:30-20:30', 'loc': '서울 구로구 신도림동 692'}},
-    {'타임스퀘어': {'station': '영등포', 'time': '10:30-22:00', 'loc': '서울 영등포구 영등포동4가 442'}},
-    {'이촌 한강공원': {'station': '노량진', 'time': '연중무휴', 'loc': '서울 용산구 이촌동 302-17'}},
-    {'서울로7017': {'station': '서울', 'time': '연중무휴', 'loc': '서울 중구 봉래동2가 122-14'}},
-    {'덕수궁 돌담길+정동길': {'station': '시청', 'time': '11:00-14:00', 'loc': '서울 중구 정동 4'}},
-    {'젊음의 거리': {'station': '종각', 'time': '연중무휴', 'loc': '서울 종로구 종로8길 5-8 구두수선대'}},
-    {'광장시장': {'station': '종로5가', 'time': '09:00-18:00', 'loc': '서울 종로구 창경궁로 88'}},
-    {'동대문디자인플라자': {'station': '동대문', 'time': '10:00-20:00', 'loc': '서울 중구 을지로 281'}},
-    {'홍릉수목원': {'station': '청량리', 'time': '09:00-18:00', 'loc': '서울 동대문구 회기로 57'}},
-    {'경희대 캠퍼스': {'station': '회기', 'time': '연중무휴', 'loc': '서울 동대문구 경희대로 26'}},
-    {'광명동굴': {'station': '광명', 'time': '09:00-18:00', 'loc': '경기 광명시 가학로85번길 142'}},
-    {'항동기찻길': {'station': '오류동', 'time': '연중무휴', 'loc': '서울 구로구 오리로 1189'}},
-    {'전곡리유적': {'station': '연천', 'time': '연중무휴', 'loc': '경기 연천군 전곡읍 양연로 1510'}},
-    {'한국만화박물관': {'station': '부천', 'time': '10:00-18:00', 'loc': '경기 부천시 원미구 길주로 1'}},
-    {'안양예술공원': {'station': '안양', 'time': '연중무휴', 'loc': '경기 안양시 만안구 예술공원로131번길 7'}},
-    {'화성행궁': {'station': '수원', 'time': '09:00-18:00', 'loc': '경기 수원시 팔달구 정조로 825'}},
-    {'물향기수목원': {'station': '오산', 'time': '09:00-18:00', 'loc': '경기 오산시 청학로 211'}},
-    {'왕송호수': {'station': '의왕', 'time': '연중무휴', 'loc': '경기 의왕시 초평동'}},
-    {'인천차이나타운': {'station': '인천', 'time': '연중무휴', 'loc': '인천 중구 차이나타운로26번길 12-17'}},
-    {'G밸리몰': {'station': '구로', 'time': '11:00-21:30', 'loc': '서울 금천구 디지털로10길 9 현대시티아울렛 5'}},
-    {'진위천 유원지': {'station': '평택', 'time': '09:00-21:00', 'loc': '경기 평택시 진위면 진위서로 264-15'}},
-    {'독립기념관': {'station': '천안', 'time': '09:30-18:00', 'loc': '충남 천안시 동남구 목천읍 독립기념관로 1 독립기념관'}},
-    {'가을단풍길': {'station': '신도림', 'time': '연중무휴', 'loc': '서울 구로구 신도림동 328-34'}},
-    {'문래창작촌': {'station': '영등포', 'time': '연중무휴', 'loc': '문래동3가 54-39'}},
-    {'남산서울타워': {'station': '서울', 'time': '10:00-22:30', 'loc': '서울 용산구 용산동2가 산1-3'}},
-    {'서울시립미술관': {'station': '시청', 'time': '10:00-20:00', 'loc': '서울 중구 서소문동 37'}},
-    {'인사동': {'station': '종각', 'time': '연중무휴', 'loc': '서울 종로구 인사동'}},
-    {'청계천': {'station': '종로5가', 'time': '연중무휴', 'loc': '서울 종로구 창신동'}},
-    {'혜화동': {'station': '동대문', 'time': '연중무휴', 'loc': '서울특별시 종로구 혜화동'}},
-    {'회기 파전골목': {'station': '회기', 'time': '연중무휴', 'loc': '서울 동대문구 회기로28길 8'}},
-    {'호봉골': {'station': '광명', 'time': '연중무휴', 'loc': '경기 광명시 일직동'}},
-    {'오류동역광장': {'station': '오류동', 'time': '연중무휴', 'loc': '서울 구로구 오류동 65-6'}},
-    {'연천회관': {'station': '연천', 'time': '09:00-21:00', 'loc': '경기 연천군 연천읍 평화로1219번길 42'}},
-    {'부천중앙공원': {'station': '부천', 'time': '연중무휴', 'loc': '경기 부천시 원미구 소향로 162'}},
-    {'중앙시장': {'station': '안양', 'time': '10:00-20:00', 'loc': '경기 안양시 만안구 냉천로 196 중앙시장'}},
-    {'방화수류정': {'station': '수원', 'time': '연중무휴', 'loc': '경기 수원시 팔달구 수원천로392번길 44-6 방화수류정'}},
-    {'오산천': {'station': '오산', 'time': '연중무휴', 'loc': '경기 오산시 누읍동 1'}},
-    {'철도박물관': {'station': '의왕', 'time': '09:00-18:00', 'loc': '경기 의왕시 철도박물관로 142 철도박물관'}},
-    {'월미도': {'station': '인천', 'time': '10:00-21:00', 'loc': '인천 중구 북성동1가 98-352'}},
-    {'안양천 벚꽃길': {'station': '구로', 'time': '연중무휴', 'loc': '경기 군포시 당정동'}},
-    {'소사벌 카페거리': {'station': '평택', 'time': '연중무휴', 'loc': '경기도 평택시 평남로 일대'}},
-    {'태조산공원': {'station': '천안', 'time': '09:00-21:00', 'loc': '충남 천안시 동남구 태조산길 261 태조산청소년수련관'}},
-    {'경복궁': {'station': '경복궁', 'time': '09:00-18:00', 'loc': '서울 종로구 사직로 161 경복궁'}},
-    {'북촌 한옥마을': {'station': '안국', 'time': '10:00-17:00', 'loc': '서울 종로구 계동길 37'}},
-    {'서촌 쭈먹': {'station': '경복궁', 'time': '11:00-22:00', 'loc': '서울 종로구 자하문로1길 20'}},
-    {'신사동 가로수길': {'station': '신사', 'time': '00:00-24:00', 'loc': '서울 강남구 신사동'}},
-    {'K-star road': {'station': '압구정', 'time': '00:00-24:00', 'loc': '서울 강남구 압구정동 394'}},
-    {'장독대': {'station': '학여울', 'time': '11:00-22:00', 'loc': '서울 강남구 영동대로 221 서림상가 뒷편1층 1호'}},
-    {'압구정샌드위치': {'station': '대치', 'time': '08:00-20:00', 'loc': '서울 강남구 삼성로 212 은마종합상가 지하1층 A동 62호'}},
-    {'남산공원': {'station': '충무로', 'time': '00:00-24:00', 'loc': '강원 강릉시 노암동 740-1'}},
-    {'서울경마공원': {'station': '수서', 'time': '09:30-18:00', 'loc': '경기 과천시 경마공원대로 107'}},
-    {'세빛섬': {'station': '고속터미널', 'time': '00:00-24:00', 'loc': '서울특별시 서초구 올림픽대로 2085-14 세빛섬'}},
-    {'둘리뮤지엄': {'station': '쌍문', 'time': '10:00-18:00', 'loc': '서울 도봉구 시루봉로1길 6'}},
-    {'북서울꿈의숲': {'station': '미아', 'time': '00:00-24:00', 'loc': '서울 강북구 월계로 173'}},
-    {'이화벽화마을': {'station': '혜화', 'time': '00:00-24:00', 'loc': '서울 종로구 이화장길 70-11'}},
-    {'동대문DDP': {'station': '동대문역사공원', 'time': '10:00-20:00', 'loc': '서울 중구 을지로 281'}},
-    {'남산골한옥마을': {'station': '명동', 'time': '09:00-20:00', 'loc': '서울 중구 퇴계로34길 28 남산골한옥마을'}},
-    {'숭례문': {'station': '회현', 'time': '09:00-18:00', 'loc': '서울 중구 세종대로 40'}},
-    {'서울로7017': {'station': '서울', 'time': '00:00-24:00', 'loc': '서울 중구 청파로 432'}},
-    {'전쟁기념관': {'station': '삼각지', 'time': '09:30-18:00', 'loc': '서울 용산구 이태원로 29'}},
-    {'국립중앙박물관': {'station': '이촌', 'time': '10:00-18:00', 'loc': '서울 용산구 서빙고로 137 국립중앙박물관'}},
-    {'창경궁': {'station': '혜화', 'time': '09:00-21:00', 'loc': '서울 종로구 창경궁로 185 창경궁'}},
-    {'남대문시장': {'station': '회현', 'time': '00:00-23:00', 'loc': '서울 중구 남대문시장4길 21'}},
-    {'국립서울현충원': {'station': '동작', 'time': '06:00-18:00', 'loc': '서울 동작구 현충로 210'}},
-    {'서울 하늘공원': {'station': '월드컵경기장', 'time': '07:00-18:00', 'loc': '서울 마포구 하늘공원로 95'}},
-    {'난지캠핑장': {'station': '월드컵경기장', 'time': '00:00-24:00', 'loc': '서울 마포구 한강난지로 28'}},
-    {'이태원 세계 음식 거리': {'station': '이태원', 'time': '00:00-24:00', 'loc': '서울 용산구 이태원동'}},
-    {'경리단길': {'station': '녹사평', 'time': '00:00-24:00', 'loc': '서울 용산구 이태원동'}},
-    {'동묘구제시장': {'station': '동묘앞', 'time': '00:00-24:00', 'loc': '서울 종로구 숭인동 102-8'}},
-    {'보문사': {'station': '보문', 'time': '08:00-17:00', 'loc': '서울 성북구 보문사길 20 보문사'}},
-    {'블루스퀘어': {'station': '한강진', 'time': '00:00-24:00', 'loc': '서울 용산구 이태원로 294'}},
-    {'공트럴파크': {'station': '태릉입구', 'time': '00:00-24:00', 'loc': '서울 노원구 화랑로 475-6'}}
-]
 
 scrollbar = tk.Scrollbar(list_frame)
 scrollbar.pack(side="right", fill="y")
@@ -210,34 +283,26 @@ scrollbar.config(command=canvas.yview)
 places_frame = tk.Frame(canvas, bg="#ffffff", width=960, height=340, pady=40)
 canvas.create_window((0, 0), window=places_frame, anchor="nw")
 
-course = []
-
 # 카드 클릭시 역 가져오기
 def get_courses(station):
-    global idx, course
-    print(f" 선택된 역: {station}")
+    global course, start
+    print(f"선택된 역: {station}")
 
     if station in course:
-  
+        if station == course[0] and start is not None:
+            return
         course.remove(station)
         print(f"중복 선택 → '{station}' 삭제됨")
     else:
-       
         course.append(station)
 
+    route_repeat(course)
     print(f"[현재 경로] {course}")
     print('')
 
 # 장소카드 클릭이벤트 함수
 def click_place(station, title): 
     get_courses(station)
-
-# # 장소카드 호버효과
-# def on_enter(event):
-#     place_card.config(bg="#eeeeee")
-
-# def on_leave(event):
-#     place_card.config(bg="#ffffff")
 
 for i, place in enumerate(places):
     if i % 3 == 0:
@@ -248,9 +313,6 @@ for i, place in enumerate(places):
     place_card = tk.Frame(wrap, width=300, height=100, bg="#ffffff", highlightbackground="#dddddd", highlightthickness=1, cursor="hand2")
     place_card.pack_propagate(0)  # pack_propagate(0) 자동으로 사이즈 조절되는 기능 끄기
     place_card.pack(side="left", fill="y", padx=10)
-    # 호버효과, 마지막 위젯만 호버됨
-    # place_card.bind("<Enter>", on_enter)
-    # place_card.bind("<Leave>", on_leave)
 
     # 이미지 넣기
     image = Image.open(f"./images/{(i+1)}.png")
